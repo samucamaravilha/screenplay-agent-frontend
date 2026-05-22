@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,7 @@ import {
   THEMES,
   TONES,
 } from '@/lib/options'
+import { getProject, updateProject } from '@/lib/projects'
 import { saveArc, saveSeries } from '@/lib/storage'
 import type {
   AntagonistType,
@@ -81,7 +82,12 @@ function validate(s: typeof DEFAULTS): string | null {
 
 export function SeriesSetup() {
   const navigate = useNavigate()
-  const [draft, setDraft] = useState(DEFAULTS)
+  const { projectId } = useParams<{ projectId: string }>()
+  const project = projectId ? getProject(projectId) : null
+  const [draft, setDraft] = useState({
+    ...DEFAULTS,
+    title: project?.name ?? DEFAULTS.title,
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -133,6 +139,9 @@ export function SeriesSetup() {
     try {
       const arc = await generateArc(series)
       saveArc(arc)
+      if (projectId) {
+        updateProject(projectId, { seriesId: series.id })
+      }
       navigate(`/series/${series.id}/arc`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao gerar arco.')

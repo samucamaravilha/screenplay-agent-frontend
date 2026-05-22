@@ -1,6 +1,7 @@
-import { NavLink } from 'react-router-dom'
-import { FileText, Layers, Play } from 'lucide-react'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { ArrowLeft, FileText, Layers, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { listProjects } from '@/lib/projects'
 
 type Item = {
   to: string
@@ -10,8 +11,12 @@ type Item = {
 }
 
 export function Sidebar({ seriesId }: { seriesId?: string }) {
+  const navigate = useNavigate()
+  const project = seriesId
+    ? listProjects().find((p) => p.seriesId === seriesId)
+    : undefined
+
   const items: Item[] = [
-    { to: '/setup', label: 'Series Setup', icon: FileText },
     {
       to: seriesId ? `/series/${seriesId}/arc` : '/arc',
       label: 'Arc Overview',
@@ -28,7 +33,15 @@ export function Sidebar({ seriesId }: { seriesId?: string }) {
 
   return (
     <aside className="w-16 shrink-0 border-r border-border bg-card/40 flex flex-col items-center py-4 gap-2">
-      <div className="text-xs font-bold tracking-widest text-muted-foreground rotate-180 [writing-mode:vertical-rl] mb-3">
+      <button
+        type="button"
+        onClick={() => navigate(project ? `/project/${project.id}` : '/dashboard')}
+        title={project ? `Voltar a ${project.name}` : 'Voltar ao dashboard'}
+        className="h-9 w-9 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+      >
+        <ArrowLeft className="h-4 w-4" />
+      </button>
+      <div className="text-xs font-bold tracking-widest text-muted-foreground rotate-180 [writing-mode:vertical-rl] my-3">
         STORY · WORKSHOP
       </div>
       {items.map(({ to, label, icon: Icon, disabled }) => (

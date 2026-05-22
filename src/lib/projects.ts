@@ -1,3 +1,5 @@
+import { supabase } from './supabase'
+
 export type Project = {
   id: string
   name: string
@@ -6,50 +8,75 @@ export type Project = {
   updatedAt: string
 }
 
-const KEY = 'sw:projects'
+type ProjectRow = {
+  id: string
+  name: string
+  series_id: string | null
+  created_at: string
+  updated_at: string
+}
 
-function safeParse<T>(raw: string | null): T | null {
-  if (!raw) return null
-  try {
-    return JSON.parse(raw) as T
-  } catch {
-    return null
+function rowToProject(row: ProjectRow): Project {
+  return {
+    id: row.id,
+    name: row.name,
+    seriesId: row.series_id ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   }
 }
 
-export function listProjects(): Project[] {
-  const all = safeParse<Project[]>(localStorage.getItem(KEY)) ?? []
-  return all.sort((a, b) => (b.updatedAt > a.updatedAt ? 1 : -1))
+export async function listProjects(): Promise<Project[]> {
+  const { data, error } = await supabase
+    .from('projects')
+    .select('*')
+    .order('updated_at', { ascending: false })
+  if (error) throw new Error(`listProjects: ${error.message}`)
+  return (data ?? []).map((r) => rowToProject(r as ProjectRow))
 }
 
-export function getProject(id: string): Project | null {
-  return listProjects().find((p) => p.id === id) ?? null
+export async function getProject(id: string): Promise<Project | null> {
+  const { data, error } = await supabase
+    .from('projects')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw new Error(`getProject: ${error.message}`)
+  return data ? rowToProject(data as ProjectRow) : null
 }
 
-export function createProject(name: string): Project {
-  const now = new Date().toISOString()
-  const project: Project = {
-    id: `proj_${Date.now().toString(36)}`,
-    name,
-    createdAt: now,
-    updatedAt: now,
+export async function createProject(name: string): Promise<Project> {
+  const id = `proj_${Date.now().toString(36)}`
+  const { data, error } = await supabase
+    .from('projects')
+    .insert({ id, name })
+    .select()
+    .single()
+  if (error) throw new Error(`createProject: ${error.message}`)
+  return rowToProject(data as ProjectRow)
+}
+
+export async function updateProject(
+  id: string,
+  patch: Partial<Project>,
+): Promise<Project | null> {
+  const update: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
   }
-  const all = listProjects()
-  all.push(project)
-  localStorage.setItem(KEY, JSON.stringify(all))
-  return project
+  if (patch.name !== undefined) update.name = patch.name
+  if (patch.seriesId !== undefined) update.series_id = patch.seriesId
+
+  const { data, error } = await supabase
+    .from('projects')
+    .update(update)
+    .eq('id', id)
+    .select()
+    .maybeSingle()
+  if (error) throw new Error(`updateProject: ${error.message}`)
+  return data ? rowToProject(data as ProjectRow) : null
 }
 
-export function updateProject(id: string, patch: Partial<Project>): Project | null {
-  const all = listProjects()
-  const idx = all.findIndex((p) => p.id === id)
-  if (idx < 0) return null
-  all[idx] = { ...all[idx], ...patch, updatedAt: new Date().toISOString() }
-  localStorage.setItem(KEY, JSON.stringify(all))
-  return all[idx]
-}
-
-export function deleteProject(id: string): void {
-  const all = listProjects().filter((p) => p.id !== id)
-  localStorage.setItem(KEY, JSON.stringify(all))
+export async function deleteProject(id: string): Promise<void> {
+  const { error } = await supabase.from('projects').delete().eq('id', id)
+  if (error) throw new Error(`deleteProject: ${error.message}`)
 }

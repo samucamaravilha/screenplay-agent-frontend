@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 
@@ -26,8 +26,9 @@ import {
   THEMES,
   TONES,
 } from '@/lib/options'
-import { getProject, updateProject } from '@/lib/projects'
+import { updateProject } from '@/lib/projects'
 import { saveArc, saveSeries } from '@/lib/storage'
+import { useProject } from '@/lib/storage/hooks'
 import type {
   AntagonistType,
   EndingType,
@@ -83,13 +84,18 @@ function validate(s: typeof DEFAULTS): string | null {
 export function SeriesSetup() {
   const navigate = useNavigate()
   const { projectId } = useParams<{ projectId: string }>()
-  const project = projectId ? getProject(projectId) : null
-  const [draft, setDraft] = useState({
-    ...DEFAULTS,
-    title: project?.name ?? DEFAULTS.title,
-  })
+  const { project } = useProject(projectId)
+  const [draft, setDraft] = useState(DEFAULTS)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Pre-fill the series title with the project name when the project loads.
+  useEffect(() => {
+    if (project && !draft.title) {
+      setDraft((d) => ({ ...d, title: project.name }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project])
 
   function toggleTheme(t: Theme) {
     setDraft((d) =>
@@ -134,13 +140,13 @@ export function SeriesSetup() {
       updatedAt: now,
     }
 
-    saveSeries(series)
-
     try {
+      // Save series first — arcs and episodes have FK to series.id in Supabase.
+      await saveSeries(series)
       const arc = await generateArc(series)
-      saveArc(arc)
+      await saveArc(arc)
       if (projectId) {
-        updateProject(projectId, { seriesId: series.id })
+        await updateProject(projectId, { seriesId: series.id })
       }
       navigate(`/series/${series.id}/arc`)
     } catch (e) {

@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { ArrowLeft, FileText, Layers, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { listProjects } from '@/lib/projects'
+import { useProjects } from '@/lib/storage/hooks'
 
 type Item = {
   to: string
@@ -12,8 +12,9 @@ type Item = {
 
 export function Sidebar({ seriesId }: { seriesId?: string }) {
   const navigate = useNavigate()
+  const { projects } = useProjects()
   const project = seriesId
-    ? listProjects().find((p) => p.seriesId === seriesId)
+    ? projects.find((p) => p.seriesId === seriesId)
     : undefined
 
   const items: Item[] = [

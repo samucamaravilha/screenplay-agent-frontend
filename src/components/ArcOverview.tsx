@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Loader2, Play, RefreshCw } from 'lucide-react'
 
@@ -10,23 +10,51 @@ import { Textarea } from '@/components/ui/textarea'
 
 import { generateArc } from '@/lib/api'
 import { labelFor, SUBGENRES, TONES } from '@/lib/options'
+import { saveArc } from '@/lib/storage'
 import { useArc, useSeries } from '@/lib/storage/hooks'
-import type { ArcBeat } from '@/lib/types'
+import type { Arc, ArcBeat } from '@/lib/types'
+
+const SAVE_DEBOUNCE_MS = 600
 
 export function ArcOverview() {
   const { seriesId } = useParams<{ seriesId: string }>()
   const navigate = useNavigate()
-  const { series } = useSeries(seriesId)
-  const { arc, update: updateArc } = useArc(seriesId)
+  const { series, loading: seriesLoading } = useSeries(seriesId)
+  const { arc: remoteArc, loading: arcLoading, update: updateArc } = useArc(seriesId)
   const [regenerating, setRegenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Local arc state for edit-as-you-type. Hydrates from remote on load
+  // and on regeneration. Saves are debounced to avoid hammering Supabase.
+  const [localArc, setLocalArc] = useState<Arc | null>(remoteArc)
+  const saveTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    setLocalArc(remoteArc)
+  }, [remoteArc])
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+    }
+  }, [])
+
+  const arc = localArc
+
+  if (seriesLoading || arcLoading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   if (!series) {
     return (
       <div className="p-8">
         <p className="text-muted-foreground">Série não encontrada.</p>
-        <Button onClick={() => navigate('/setup')} className="mt-4">
-          Criar nova série
+        <Button onClick={() => navigate('/dashboard')} className="mt-4">
+          Voltar ao dashboard
         </Button>
       </div>
     )
@@ -43,7 +71,15 @@ export function ArcOverview() {
   function patchBeat(idx: number, patch: Partial<ArcBeat>) {
     if (!arc) return
     const beats = arc.beats.map((b, i) => (i === idx ? { ...b, ...patch } : b))
-    updateArc({ ...arc, beats })
+    const next = { ...arc, beats }
+    setLocalArc(next)
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = window.setTimeout(() => {
+      saveArc(next).catch((e) => {
+        // eslint-disable-next-line no-console
+        console.error('saveArc failed:', e)
+      })
+    }, SAVE_DEBOUNCE_MS)
   }
 
   async function regenerateAll() {
@@ -52,7 +88,13 @@ export function ArcOverview() {
     setError(null)
     try {
       const fresh = await generateArc(series)
-      updateArc(fresh)
+      // updateArc handles optimistic state + persist. Clear any pending debounced save.
+      if (saveTimerRef.current) {
+        window.clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
+      await updateArc(fresh)
+      setLocalArc(fresh)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao regenerar arco.')
     } finally {
@@ -71,7 +113,7 @@ export function ArcOverview() {
             <Badge variant="outline">{series.totalEpisodes} eps</Badge>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Arco com {arc.beats.length} beats. Cada item é editável; suas alterações ficam salvas localmente.
+            Arco com {arc.beats.length} beats. Cada item é editável; alterações são salvas automaticamente.
           </p>
         </div>
         <Button variant="outline" onClick={regenerateAll} disabled={regenerating}>

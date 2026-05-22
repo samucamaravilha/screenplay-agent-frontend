@@ -5,6 +5,7 @@ import {
   FileText,
   Film,
   Info,
+  Loader2,
   Lock,
   Mic,
   Music,
@@ -22,7 +23,7 @@ import {
 
 import { AppSidebar } from '@/components/AppSidebar'
 import { cn } from '@/lib/utils'
-import { getProject } from '@/lib/projects'
+import { useProject } from '@/lib/storage/hooks'
 
 type ModuleId =
   | 'script'
@@ -103,7 +104,18 @@ const MODULES: Module[] = [
 export function ProjectGrid() {
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
-  const project = projectId ? getProject(projectId) : null
+  const { project, loading } = useProject(projectId)
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen">
+        <AppSidebar />
+        <main className="flex-1 flex items-center justify-center px-6">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </main>
+      </div>
+    )
+  }
 
   if (!project) {
     return (

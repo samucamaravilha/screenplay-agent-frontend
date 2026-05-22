@@ -39,21 +39,29 @@ export function EpisodeStudio() {
   const episodeNumber = Number.parseInt(episodeNumberStr ?? '1', 10)
   const navigate = useNavigate()
 
-  const { series } = useSeries(seriesId)
-  const { arc } = useArc(seriesId)
+  const { series, loading: seriesLoading } = useSeries(seriesId)
+  const { arc, loading: arcLoading } = useArc(seriesId)
   const { episode, update: updateEpisode } = useEpisode(seriesId, episodeNumber)
-  const previousEpisodes = usePreviousEpisodes(seriesId, episodeNumber)
+  const { previousEpisodes } = usePreviousEpisodes(seriesId, episodeNumber)
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeEntryHook, setActiveEntryHook] = useState(0)
   const [activeExitHook, setActiveExitHook] = useState(0)
 
+  if (seriesLoading || arcLoading) {
+    return (
+      <div className="flex h-full min-h-screen items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
   if (!series || !arc) {
     return (
       <div className="p-8">
         <p className="text-muted-foreground">Série/arco não encontrado.</p>
-        <Button onClick={() => navigate('/setup')} className="mt-4">Voltar</Button>
+        <Button onClick={() => navigate('/dashboard')} className="mt-4">Voltar</Button>
       </div>
     )
   }
@@ -72,7 +80,7 @@ export function EpisodeStudio() {
         previousEpisodes,
         refinements,
       })
-      updateEpisode(next)
+      await updateEpisode(next)
       setActiveEntryHook(0)
       setActiveExitHook(0)
     } catch (e) {

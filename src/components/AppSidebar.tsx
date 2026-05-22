@@ -1,17 +1,16 @@
-import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { FolderOpen, LayoutGrid, LogOut, Plus, Sparkles } from 'lucide-react'
+import { FolderOpen, LayoutGrid, Loader2, LogOut, Plus, Sparkles } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
-import { listProjects } from '@/lib/projects'
+import { useProjects } from '@/lib/storage/hooks'
 
 export function AppSidebar({ onNewProject }: { onNewProject?: () => void }) {
   const { user, signOut } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
-  const [projects] = useState(() => listProjects())
+  const { projects, loading } = useProjects()
 
   async function handleSignOut() {
     await signOut()
@@ -45,7 +44,12 @@ export function AppSidebar({ onNewProject }: { onNewProject?: () => void }) {
         <div className="mt-4 px-2 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
           Projetos
         </div>
-        {projects.length === 0 ? (
+        {loading ? (
+          <div className="px-2 py-1 text-xs text-muted-foreground flex items-center gap-2">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Carregando...
+          </div>
+        ) : projects.length === 0 ? (
           <div className="px-2 py-1 text-xs text-muted-foreground">
             Nenhum projeto ainda.
           </div>

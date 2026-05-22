@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { FolderOpen, Plus } from 'lucide-react'
+import { FolderOpen, Loader2, Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -17,7 +17,8 @@ import { Label } from '@/components/ui/label'
 
 import { AppSidebar } from '@/components/AppSidebar'
 import { useAuth } from '@/lib/auth'
-import { createProject, listProjects } from '@/lib/projects'
+import { createProject, type Project } from '@/lib/projects'
+import { useProjects } from '@/lib/storage/hooks'
 
 const GREETINGS = [
   'O que vamos criar hoje?',
@@ -31,7 +32,9 @@ export function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [modalOpen, setModalOpen] = useState(searchParams.get('new') === '1')
   const [openProjectsView, setOpenProjectsView] = useState(false)
-  const [projects, setProjects] = useState(() => listProjects())
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const { projects, loading, refresh } = useProjects()
 
   const greeting = useMemo(
     () => GREETINGS[Math.floor(Math.random() * GREETINGS.length)],
@@ -47,10 +50,19 @@ export function Dashboard() {
     }
   }, [searchParams, setSearchParams])
 
-  function handleCreate(name: string) {
-    const project = createProject(name)
-    setProjects(listProjects())
-    navigate(`/project/${project.id}`)
+  async function handleCreate(name: string) {
+    setCreating(true)
+    setCreateError(null)
+    try {
+      const project = await createProject(name)
+      await refresh()
+      setModalOpen(false)
+      navigate(`/project/${project.id}`)
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : 'Erro ao criar projeto.')
+    } finally {
+      setCreating(false)
+    }
   }
 
   return (
@@ -61,6 +73,7 @@ export function Dashboard() {
         {openProjectsView ? (
           <ProjectListView
             projects={projects}
+            loading={loading}
             onOpen={(id) => navigate(`/project/${id}`)}
             onBack={() => setOpenProjectsView(false)}
           />
@@ -86,11 +99,13 @@ export function Dashboard() {
                 icon={FolderOpen}
                 title="Abrir projeto"
                 description={
-                  projects.length === 0
-                    ? 'Nenhum projeto salvo ainda.'
-                    : `${projects.length} projeto${projects.length === 1 ? '' : 's'} salvo${projects.length === 1 ? '' : 's'}.`
+                  loading
+                    ? 'Carregando projetos...'
+                    : projects.length === 0
+                      ? 'Nenhum projeto salvo ainda.'
+                      : `${projects.length} projeto${projects.length === 1 ? '' : 's'} salvo${projects.length === 1 ? '' : 's'}.`
                 }
-                disabled={projects.length === 0}
+                disabled={loading || projects.length === 0}
                 onClick={() => setOpenProjectsView(true)}
               />
             </div>
@@ -100,8 +115,13 @@ export function Dashboard() {
 
       <NewProjectDialog
         open={modalOpen}
-        onOpenChange={setModalOpen}
+        onOpenChange={(open) => {
+          setModalOpen(open)
+          if (!open) setCreateError(null)
+        }}
         onCreate={handleCreate}
+        loading={creating}
+        error={createError}
       />
     </div>
   )
@@ -144,10 +164,12 @@ function ActionCard({
 
 function ProjectListView({
   projects,
+  loading,
   onOpen,
   onBack,
 }: {
-  projects: ReturnType<typeof listProjects>
+  projects: Project[]
+  loading: boolean
   onOpen: (id: string) => void
   onBack: () => void
 }) {
@@ -159,30 +181,36 @@ function ProjectListView({
           ← Voltar
         </Button>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {projects.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => onOpen(p.id)}
-            className="text-left"
-          >
-            <Card className="hover:border-primary/60 transition-colors">
-              <CardContent className="pt-5 pb-5">
-                <div className="flex items-start gap-3">
-                  <FolderOpen className="h-4 w-4 text-muted-foreground mt-0.5" />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium truncate">{p.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      atualizado em {new Date(p.updatedAt).toLocaleDateString('pt-BR')}
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Carregando...
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {projects.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => onOpen(p.id)}
+              className="text-left"
+            >
+              <Card className="hover:border-primary/60 transition-colors">
+                <CardContent className="pt-5 pb-5">
+                  <div className="flex items-start gap-3">
+                    <FolderOpen className="h-4 w-4 text-muted-foreground mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">{p.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        atualizado em {new Date(p.updatedAt).toLocaleDateString('pt-BR')}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          </button>
-        ))}
-      </div>
+                </CardContent>
+              </Card>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -191,10 +219,14 @@ function NewProjectDialog({
   open,
   onOpenChange,
   onCreate,
+  loading,
+  error,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreate: (name: string) => void
+  loading: boolean
+  error: string | null
 }) {
   const [name, setName] = useState('')
 
@@ -202,9 +234,11 @@ function NewProjectDialog({
     const trimmed = name.trim()
     if (!trimmed) return
     onCreate(trimmed)
-    setName('')
-    onOpenChange(false)
   }
+
+  useEffect(() => {
+    if (!open) setName('')
+  }, [open])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -223,16 +257,23 @@ function NewProjectDialog({
             onChange={(e) => setName(e.target.value)}
             placeholder="Ex: A Lâmina que Lembra"
             autoFocus
+            disabled={loading}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') handleCreate()
+              if (e.key === 'Enter' && !loading) handleCreate()
             }}
           />
         </div>
+        {error && (
+          <div className="text-xs text-destructive border border-destructive/40 rounded-md px-3 py-2 bg-destructive/5">
+            {error}
+          </div>
+        )}
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={loading}>
             Cancelar
           </Button>
-          <Button onClick={handleCreate} disabled={!name.trim()}>
+          <Button onClick={handleCreate} disabled={!name.trim() || loading}>
+            {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             Criar
           </Button>
         </DialogFooter>

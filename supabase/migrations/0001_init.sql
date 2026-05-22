@@ -56,6 +56,21 @@ create index if not exists episodes_series_idx
   on public.episodes(series_id, episode_number);
 
 -- ---------------------------------------------------------------------------
+-- Grants
+--
+-- Privileges are checked BEFORE RLS policies. The `authenticated` role needs
+-- explicit table grants on tables created via the SQL editor (default
+-- privileges no longer grant automatically on new Supabase projects).
+-- ---------------------------------------------------------------------------
+
+grant usage on schema public to authenticated;
+
+grant select, insert, update, delete on public.projects to authenticated;
+grant select, insert, update, delete on public.series   to authenticated;
+grant select, insert, update, delete on public.arcs     to authenticated;
+grant select, insert, update, delete on public.episodes to authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Row Level Security
 -- ---------------------------------------------------------------------------
 
